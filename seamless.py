@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Seamless : less Seamcat, more time ! :)
+Seamless : a tool to automate the generation of workspaces for Seamcat, for all combinations of values of several variables to explore
+(More informations on Seamcat on https://cept.org/eco/eco-tools-and-services/seamcat-spectrum-engineering-advanced-monte-carlo-analysis-tool )
 @author: Adrien DEMAREZ
-https://xkcd.com/1319/
 
 Generate the set of changesets to cover all the combinations of changes for all parameters
     Input : arbitrary number of parameter in a list such as [('xpath1','xattname1', oldvalue (ignored), newvalue (ignored), 'varname1','["free_space","HATA rural"]'),('xpath2','xattname2',oldvalue (ignored), newvalue (ignored), 'varname2','[1,2,3]'),('xpath3','xattname3',oldvalue (ignored), newvalue (ignored), 'varname3','range(15,19)'), ...]
     Where -> xpath/xattname: XML node ID and attribute name (e.g. from xmldiff), varname: param name (for sws filename), last_parameter: Python list or generator with the range of values for that parameter
 """
 
-SEAMCAT="/home/adrien/ANFR/Seamcat/SEAMCAT-5.4.1.jar"
+SEAMCAT="/opt/Seamcat/SEAMCAT-5.4.1.jar"
 OUTPUT_VAR="Average bitrate loss (ref. cell)"
 DEFAULT_EVENTS=5000
 DEFAULT_OUTFILENAMES='seamless_out/seamres'
