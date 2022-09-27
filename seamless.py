@@ -4,10 +4,6 @@
 Seamless : a tool to automate the generation of workspaces for Seamcat, for all combinations of values of several variables to explore
 (More informations on Seamcat on https://cept.org/eco/eco-tools-and-services/seamcat-spectrum-engineering-advanced-monte-carlo-analysis-tool )
 @author: Adrien DEMAREZ
-
-Generate the set of changesets to cover all the combinations of changes for all parameters
-    Input : arbitrary number of parameter in a list such as [('xpath1','xattname1', oldvalue (ignored), newvalue (ignored), 'varname1','["free_space","HATA rural"]'),('xpath2','xattname2',oldvalue (ignored), newvalue (ignored), 'varname2','[1,2,3]'),('xpath3','xattname3',oldvalue (ignored), newvalue (ignored), 'varname3','range(15,19)'), ...]
-    Where -> xpath/xattname: XML node ID and attribute name (e.g. from xmldiff), varname: param name (for sws filename), last_parameter: Python list or generator with the range of values for that parameter
 """
 
 SEAMCAT="/opt/Seamcat/SEAMCAT-5.4.1.jar"
@@ -21,10 +17,10 @@ from xmldiff import main as xdiff
 from xmldiff.actions import UpdateAttrib
 from itertools import product
 import os,sys
-import subprocess
 import numpy as np
 import pandas as pd
-import tempfile,webbrowser
+import tempfile
+import webbrowser
 import difflib
 import xxhash
 from io import StringIO
@@ -35,6 +31,7 @@ import argparse
 
 #plist = {"aaa" : [("xpath1","att1", [1,2,3]),("xpath2","att2", [4,5,6]),],"ccc" : [("xpath3", ["valname1","valname2"],[[(1,2,3),(4,5,6)], [(1,3,8),(2,7,6)] ] )]}
 def plist_parse(plist1):
+    """Parse the parameter list (i.e. config file)"""
     # FIXME: because of eval(), this code is _unsafe_ and care should be taken to only enter trusted and valid variable ranges/lists...
     # => Maybe use TOML parsing instead of eval() when the code is more mature...
     plist=eval(open(plist1).read().replace('\n','')) if isinstance(plist1,str) else plist1
@@ -46,10 +43,12 @@ def plist_parse(plist1):
     return plist
 
 def gencombinations(myvars):
+    """Generate the combinations to explore (using intertools.product)"""
     myvars_idx = {k:range(len(v[0][2])) for k,v in myvars.items() if len(v)>0}
     return product(*myvars_idx.values())
 
-def swsgenallfiles(oldsws, plist, basefilename=DEFAULT_OUTFILENAMES):
+def swsgenallfiles(oldsws, plist, basefilename=DEFAULT_OUTFILENAMES, events=DEFAULT_EVENTS, output_var=OUTPUT_VAR, seamloc=SEAMCAT):
+    """Generate the temporary .sws files, launch seamcat on them, and store the result of the output variable in an n-d array"""
     root_old=swsload(oldsws)
     myvars = plist_parse(plist)
     resmatrix = np.empty([len(v[0][2]) for v in myvars.values()])
@@ -81,8 +80,8 @@ def swsgenallfiles(oldsws, plist, basefilename=DEFAULT_OUTFILENAMES):
                 else:
                     print("__error__ : " + xpath_ext)
         swsgenfile(root_old, newsws_filename+".sws", patch)
-        swsexec(newsws_filename+".sws")
-        res = swrget(newsws_filename+'.swr')
+        swsexec(newsws_filename+".sws", events=events, seamloc=seamloc)
+        res = swrget(newsws_filename+'.swr', param=output_var)
         #print('\n_____\n')
         #aaa+=1
         #res=aaa
@@ -90,6 +89,7 @@ def swsgenallfiles(oldsws, plist, basefilename=DEFAULT_OUTFILENAMES):
     return resmatrix
 
 def xml_changevec(xmlroot,xpath,vec): # WARNING: only works with vectors of Point2d or Point3d !
+    """Change a vector of Point2d or Point3d at location xpath to new value vec"""
     #print(f"changevec {xpath} -> {vec}")
     node=xmlroot.xpath(xpath)[0]
     parser = ET.XMLParser(remove_blank_text=True)
@@ -104,7 +104,7 @@ def xml_changevec(xmlroot,xpath,vec): # WARNING: only works with vectors of Poin
     #ET.dump(node)
 
 def swsgenfile(oldsws_root, newsws_filename, patch):
-    #print((oldsws_root, newsws_filename, patch))
+    """Apply an XML patch to an input ET root, and export the result to a .sws file"""
     root_new=xdiff.patch_tree(patch, oldsws_root)
     doc_new=ET.tostring(root_new, pretty_print=True, encoding='utf-8', xml_declaration=True)
     with ZipFile(newsws_filename, mode="w", compression=ZIP_DEFLATED, compresslevel=5) as swsdata:
@@ -113,6 +113,7 @@ def swsgenfile(oldsws_root, newsws_filename, patch):
 #from numpy_html import array_to_html
 #    html_res=array_to_html(mat)
 def ndarray_html(mat,plist):
+    """Display an n-d array in HTML (sections/subsection will be created for all variables except the 2 last ones, for which HTML tables will be used)"""
     html='<html><head><title>Results</title><style>\nbody {font-family:"arial";font-size: 11;}\ntable {border-collapse: collapse;}</style></head><body>'
     myvars = plist_parse(plist)
     allvars=list(myvars.keys())
@@ -149,11 +150,13 @@ def openbrowser(html):
         webbrowser.open('file://' + f.name)
 
 def swsload(swsfile):
+    """Parse a .sws to an XML ET tree"""
     xmldata = ZipFile(swsfile).open("scenario.xml").read()
     parser = ET.XMLParser(remove_blank_text=True, encoding="utf8")
     return ET.XML(xmldata,parser)
 
 def swsdiff(oldsws,newsws):
+    """Analyses the difference between two .sws"""
     root_old=swsload(oldsws)
     root_new=swsload(newsws)
     diffs=xdiff.diff_trees(root_old,root_new, diff_options={'F': 0.5, 'ratio_mode': 'accurate'})
@@ -211,14 +214,16 @@ def diff_lines_html(old,new,onlydiffs=False):
     res += "\n</body></html>\n"
     return res
 
-def swsexec(swsfile,events=DEFAULT_EVENTS):
-    print("________\nExecuting: " + swsfile)
+def swsexec(swsfile, events=DEFAULT_EVENTS, seamloc=SEAMCAT):
+    """Execute Seamcat on a given .sws file"""
     outfile = os.path.splitext(swsfile)[0] +'.swr'
-    CMD = f'java -classpath "{SEAMCAT}" org.seamcat.CommandLine "{swsfile}" result="{outfile}" events={events}' # -cp instead of -classpath
+    print(f'________\njava -classpath "{seamloc}" org.seamcat.CommandLine "{swsfile}" result="{outfile}" events={events}') # -cp instead of -classpath
+    CMD = f'java -classpath "{seamloc}" org.seamcat.CommandLine "{swsfile}" result="{outfile}" events={events}' # -cp instead of -classpath
     #subprocess.call(CMD, shell=False)
     os.system(CMD)
 
 def swrget(swrfile, param=OUTPUT_VAR):
+    """Return the desired input variable from the .swr result file"""
     xmldata = ZipFile(swrfile).open("results.xml").read()
     parser = ET.XMLParser(remove_blank_text=True, encoding="utf8")
     root=ET.XML(xmldata,parser)
@@ -242,6 +247,10 @@ if __name__ == "__main__":
     parser_gensws.add_argument("conffile", help="Configuration file")
     parser_gensws.add_argument("infile", help="Input sws file")
     parser_gensws.add_argument("outfile", help="Output npy file")
+    parser_gensws.add_argument("--events", "-n", help="Number of events for simulation", default=DEFAULT_EVENTS)
+    parser_gensws.add_argument("--outputvar", "-v", help="Output variable to store", default=OUTPUT_VAR)
+    parser_gensws.add_argument("--seamloc", "-s", help="Seamcat location", default=SEAMCAT)
+    parser_gensws.add_argument("--tmpdir", "-t", help="Seamcat location", default=None)
 
     parser_showres = subparsers.add_parser('showres', help="Generate HTML report")
     parser_showres.add_argument("conffile", help="Configuration file")
@@ -265,9 +274,12 @@ if __name__ == "__main__":
         html=diff_lines_html(xml1.decode(),xml2.decode(), args.onlydiffs)
         openbrowser(html)
     elif args.subcommand=='compute': # gen
-        os.makedirs(os.path.dirname(DEFAULT_OUTFILENAMES), exist_ok=False)
-        hypercube=swsgenallfiles(args.infile,args.conffile)
-        np.save(args.outfile,hypercube)
+        with tempfile.TemporaryDirectory() as tmpdirobj:
+            tmpdir = tmpdirobj if args.tmpdir==None else args.tmpdir
+            #os.makedirs(os.path.dirname(DEFAULT_OUTFILENAMES), exist_ok=False)
+            print(f"tmp dir: {tmpdir}")
+            hypercube=swsgenallfiles(args.infile,args.conffile, basefilename=tmpdir+"/seamres", events=args.events, output_var=args.outputvar, seamloc=args.seamloc)
+            np.save(args.outfile,hypercube)
     elif args.subcommand=='showres':
         plist = sys.argv[2]
         hypercube=np.load(args.outfile)
