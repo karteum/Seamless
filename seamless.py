@@ -1,3 +1,4 @@
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
 """
 Seamless : a tool to automate the generation of workspaces for Seamcat, for all combinations of values of several variables to explore
@@ -24,18 +25,12 @@ import subprocess
 import numpy as np
 import pandas as pd
 import tempfile,webbrowser
-#import toml
 import difflib
 import xxhash
 from io import StringIO
-#import xarray as xr
-#from multiprocessing import Pool,cpu_count
-#from python_docx import Document
+import argparse
+#import toml
 #from graphtage import xml as gxml
-#import sys,csv,sqlite3
-#from flask import Flask, request, Response, send_file # render_template, 
-#app=Flask(__name__)
-#from glob import glob
 #from textwrap import fill
 
 #plist = {"aaa" : [("xpath1","att1", [1,2,3]),("xpath2","att2", [4,5,6]),],"ccc" : [("xpath3", ["valname1","valname2"],[[(1,2,3),(4,5,6)], [(1,3,8),(2,7,6)] ] )]}
@@ -230,55 +225,54 @@ def swrget(swrfile, param=OUTPUT_VAR):
     node=root.findall("./SEAMCATResults/item[1]/SingleValues/Single[@name='%s']" % (param))[0]
     return float(node.attrib['value']) if node.attrib['type']=='double' else node.attrib['value']
 
-def usage():
-    return """seamless diff file1.sws file2.sws [plist.txt] : generate the patch list plist.txt, to edit with proper variable names and ranges before step 2
-seamless gen file1.sws plist.txt results.npy : generate the sws workspace for all combinations, launch the computations and store the results in results.npy
-seamless show results.npy : generate an html report (and launch a web browser) from the n-d array result.npy
-seamless diffhtml file1.sws file2.sws : generate an html report (and launch a web browser) showing the differences between the two sws/xml files
-"""
-
 if __name__ == "__main__":
-    if len(sys.argv)<3:
-        usage()
-    opmode=sys.argv[1].lower()
-    if opmode=="diff":
-        if len(sys.argv) not in (4,5):
-            usage()
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="subcommand", required=True)
+    parser_makepatch = subparsers.add_parser('makepatch', help="Make patch based on XML diff")
+    parser_makepatch.add_argument("sws1", help="File 1")
+    parser_makepatch.add_argument("sws2", help="File 2")
+    parser_makepatch.add_argument("--outfile", "-o", help="Output patch file", default=None)
+
+    parser_diffhtml = subparsers.add_parser('diffhtml', help="HTML diff")
+    parser_diffhtml.add_argument("sws1", help="File 1")
+    parser_diffhtml.add_argument("sws2", help="File 2")
+    parser_diffhtml.add_argument("--onlydiffs", "-d", help="Show only diffs", action='store_true', default=False)
+
+    parser_gensws = subparsers.add_parser('compute', help="Make computations")
+    parser_gensws.add_argument("conffile", help="Configuration file")
+    parser_gensws.add_argument("infile", help="Input sws file")
+    parser_gensws.add_argument("outfile", help="Output npy file")
+
+    parser_showres = subparsers.add_parser('showres', help="Generate HTML report")
+    parser_showres.add_argument("conffile", help="Configuration file")
+    parser_showres.add_argument("outfile", help="Output npy file")
+
+    args = parser.parse_args()
+
+    if args.subcommand=='makepatch': # diff
         file1=sys.argv[2]
         file2=sys.argv[3]
-        diff,plist=swsdiff(file1,file2)
+        diff,plist=swsdiff(args.sws1,args.sws2)
         print('\n'.join([str(x) for x in plist]))
-        if len(sys.argv)==5:
-            outfile=sys.argv[4]
-            with open(outfile,'w') as fp:
+        if args.outfile:
+            with open(args.outfile,'w') as fp:
                 fp.write('\n'.join([str(x) for x in plist])) # str(plist).replace("),","),\n")
-    elif opmode=="diffhtml":
-        if len(sys.argv) not in (4,5):
-            usage()
-        onlydiffs=len(sys.argv)==5            
-        ET1=swsload(sys.argv[2])
-        ET2=swsload(sys.argv[3])
+    elif args.subcommand=='diffhtml':
+        ET1=swsload(args.sws1)
+        ET2=swsload(args.sws2)
         xml1=ET.tostring(ET1, pretty_print=True, encoding='utf-8', xml_declaration=True)
         xml2=ET.tostring(ET2, pretty_print=True, encoding='utf-8', xml_declaration=True)
-        html=diff_lines_html(xml1.decode(),xml2.decode(), onlydiffs)
+        html=diff_lines_html(xml1.decode(),xml2.decode(), args.onlydiffs)
         openbrowser(html)
-    elif opmode=="gen":
-        if len(sys.argv)!=5:
-            usage()
-        file1=sys.argv[2]
-        outfile=sys.argv[4]
-        hypercube=swsgenallfiles(file1,sys.argv[3])
-        np.save(outfile,hypercube)
-    elif opmode=="show":
-        if len(sys.argv)!=4:
-            usage()
+    elif args.subcommand=='compute': # gen
+        os.makedirs(os.path.dirname(DEFAULT_OUTFILENAMES), exist_ok=False)
+        hypercube=swsgenallfiles(args.infile,args.conffile)
+        np.save(args.outfile,hypercube)
+    elif args.subcommand=='showres':
         plist = sys.argv[2]
-        npy=sys.argv[3]
-        hypercube=np.load(npy)
-        html=ndarray_html(hypercube,plist)
+        hypercube=np.load(args.outfile)
+        html=ndarray_html(hypercube,args.conffile)
         openbrowser(html)
-    else:
-        usage()
 
 ##################################
 # Old code
