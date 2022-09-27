@@ -27,7 +27,8 @@ The main scheme is
   * Array of values for the variable. For vector entries, every "value" is an array of 2-uplet or 3-uplet (only 2d or 3d points are supported). For scalar nodes where len(location_array)>0, every "value" is an array of len(location_array) entries so that all those nodes are changed simultaneously
 
 OK, maybe better with an example :)
-```{
+```python
+{
 "mask" : [
     ('/Workspace/systems/system[$$]/configuration/transmitter/emissionCharacteristics/emissionMask/', [1,2,3,5,6,7],
     [ [(-30,-60,200),(-0.5,-60,200),(-0.35,-49,200),(-0.101,-30,200),(-0.1,0,200),(0.1,0,200),(0.101,-30,200),(0.35,-49,200),(0.5,-60,200),(30,-60,200)],
@@ -39,7 +40,8 @@ OK, maybe better with an example :)
 "Density" : [
 ("/Workspace/links/link[$$]/path/correlationSettings/customUI/customItem[2]@activeTx", [1,2,3,4], [ [4,16,78,1], [7,32,156,3] ]
 )]
-}```
+}
+```
 
 In that example above, we have 3 variables "mask", "DC" and "Density"
 * "mask" has an XML vector node (ending with "/") that should be changed in 6 places simultaneously ("system1","system2","system3","system5","system6","system7") and two possible values for the vector
